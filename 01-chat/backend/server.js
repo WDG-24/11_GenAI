@@ -1,31 +1,9 @@
 import cors from 'cors';
 import express from 'express';
-import { OpenAI } from 'openai';
-import { z } from 'zod';
-import { zodResponseFormat } from 'openai/helpers/zod';
+
 import mongoose from 'mongoose';
 
 await mongoose.connect(process.env.MONGO_URI, { dbName: 'chat' });
-
-const Chat = mongoose.model(
-  'chat',
-  new mongoose.Schema({
-    history: {
-      type: [Object],
-      default: [],
-    },
-  })
-);
-
-const ai = new OpenAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-});
-
-// const ai = new OpenAI({
-//   apiKey: 'ollama',
-//   baseURL: 'http://127.0.0.1:11434/v1',
-// });
 
 const port = process.env.PORT || 8080;
 
