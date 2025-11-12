@@ -38,29 +38,6 @@ app.get('/', (_req, res) => {
   res.json({ message: 'Running' });
 });
 
-app.post('/messages', async (req, res) => {
-  const { prompt, chatId } = req.body;
-
-  let chat;
-  if (!chatId) {
-    chat = await Chat.create({
-      history: [{ role: 'system', content: 'You are Gollum, from The Lord of the Rings. Always answer in character.' }],
-    });
-  } else {
-    chat = await Chat.findById(chatId);
-  }
-
-  const result = await ai.chat.completions.create({
-    model: 'gemini-2.5-flash',
-    messages: [...chat.history, { role: 'user', content: prompt }],
-  });
-
-  chat.history = [...chat.history, { role: 'user', content: prompt }, result.choices[0].message];
-  await chat.save();
-
-  res.json({ result: result.choices[0].message, chatId: chat._id });
-});
-
 app.use('/{*splat}', () => {
   throw Error('Page not found', { cause: { status: 404 } });
 });
