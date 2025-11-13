@@ -4,6 +4,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { OpenAI } from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod.js';
+import type { ChatCompletionMessage } from 'openai/resources';
 import { z } from 'zod';
 
 // Gehört natürlich in eigene Module :)
@@ -59,6 +60,7 @@ app.post('/messages', async (req, res) => {
     chat = await Chat.create({ history: [] });
   } else {
     chat = (await Chat.findById(chatId)) as ChatDocument;
+    if (!chat) throw new Error('Invalid ChatID');
   }
 
   const result = await client.chat.completions.create({
@@ -77,16 +79,73 @@ app.post('/messages', async (req, res) => {
   res.json({ result: answer.content, chatId: chat._id });
 });
 
+app.post('/messages/streaming', async (req, res) => {
+  const { prompt, chatId } = req.body;
+
+  let chat: ChatDocument;
+  if (!chatId) {
+    chat = await Chat.create({
+      history: [
+        // { role: 'system', content: 'Fasse dich kurz und schmeichele nicht. Versuche in 2-3 Sätzen zu antworten' },
+      ],
+    });
+  } else {
+    chat = (await Chat.findById(chatId)) as ChatDocument;
+    if (!chat) throw new Error('Invalid ChatID');
+  }
+
+  const result = await client.chat.completions.create({
+    // model: 'gpt-5-mini',
+    // model: 'llama3.2',
+    model: 'gemini-2.5-flash',
+    messages: [...chat.history, { role: 'user', content: prompt }],
+    stream: true,
+  });
+
+  // Client-Browser-Verbindung offen halten für Server Sent Events (SSE)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    connection: 'keep-alive',
+    'cache-control': 'no-cache',
+  });
+
+  // Antwort der KI sammeln, um sie später in die DB zu schreiben
+  let answer = '';
+
+  // Jedes einzelne Stückchen der KI-Antwort als SSE weiterleiten
+  for await (const chunk of result) {
+    const text = chunk.choices[0]?.delta.content;
+    answer += text;
+    // Standardformat für SSE `data: <text>\n\n`
+    res.write(`data: ${JSON.stringify(text)}\n\n`); // JSON.stringify um Sonderzeichen sicher zu transporieren
+  }
+
+  // Chat mit neuen Einträgen speichern
+  chat.history = [
+    ...chat.history,
+    { role: 'user', content: prompt } as unknown as ChatMessage,
+    { role: 'assistant', content: answer } as ChatCompletionMessage,
+  ];
+  await chat.save();
+  // ChatId ans Frontend schicken
+  res.write(`chat: ${JSON.stringify(chat._id)}\n\n`);
+  // Verbindung beenden
+  res.end();
+  res.on('close', () => res.end());
+});
+
 app.post('/images', async (req, res) => {
   const { prompt } = req.body;
 
   const result = await client.images.generate({
-    model: 'imagen-4.0-generate-001',
+    model: 'imagen-4.0-generate-001', // Google
     prompt,
     response_format: 'b64_json',
   });
 
   // const result = await client.models.list();
+
+  // in Cloudinary speichern...
 
   res.json({ result });
 });

@@ -24,6 +24,7 @@ const renderer = {
 
 function App() {
   const [prompt, setPrompt] = useState('');
+  const [chatId, setChatId] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [pending, setPending] = useState(false);
   const [isImageGen, setIsImageGen] = useState(false);
@@ -31,6 +32,28 @@ function App() {
 
   const handleImageGen = async () => {
     //  Todo: Handle image gen
+    setPending(true);
+
+    try {
+      setAiResponse('');
+      setBase64img('');
+
+      const res = await fetch('http://localhost:8080/images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = await res.json();
+      setBase64img(data.result.data[0].b64_json);
+      c;
+    } catch (error) {
+      console.error('Error in image genearation: ', error);
+    } finally {
+      setPending(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -45,6 +68,51 @@ function App() {
       setPending(true);
 
       //  Todo: handle chat completions without streaming hassle
+      // const res = await fetch('http://localhost:8080/messages', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({ prompt, chatId }),
+      // });
+
+      // const data = await res.json();
+      // setAiResponse(data.result);
+      // setChatId(data.chatId);
+
+      // Streaming
+      const res = await fetch('http://localhost:8080/messages/streaming', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt, chatId }),
+      });
+
+      if (!res.body) throw new Error('Request failed');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+
+        const lines = chunk.split('\n\n');
+        for (let line of lines) {
+          if (line.startsWith('data: ')) {
+            line = line.slice(6);
+            const parsedText = JSON.parse(line);
+            setAiResponse((p) => p + parsedText);
+          } else if (line.startsWith('chat: ')) {
+            line = line.slice(6);
+            const parsedText = JSON.parse(line);
+            setChatId(parsedText);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error ', error);
     } finally {
